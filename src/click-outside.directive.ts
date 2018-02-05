@@ -19,11 +19,11 @@ import { isPlatformBrowser } from '@angular/common';
 @Directive({ selector: '[clickOutside]' })
 export class ClickOutsideDirective implements OnInit, OnChanges, OnDestroy {
 
-  @Input() attachOutsideOnClick: boolean = false;
-  @Input() delayClickOutsideInit: boolean = false;
+  @Input() attachOutsideOnClick: boolean = true;
+  @Input() delayClickOutsideInit: boolean = true;
   @Input() exclude: string = '';
-  @Input() excludeBeforeClick: boolean = false;
-  @Input() clickOutsideEvents: string = '';
+  @Input() excludeBeforeClick: boolean = true;
+  @Input() clickOutsideEvents: string = 'click,touchstart';
   @Input() clickOutsideEnabled: boolean = true;
 
   @Output() clickOutside: EventEmitter<Event> = new EventEmitter<Event>();
