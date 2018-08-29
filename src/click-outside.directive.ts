@@ -25,17 +25,19 @@ export class ClickOutsideDirective implements OnInit, OnChanges, OnDestroy {
   @Input() excludeBeforeClick: boolean = true;
   @Input() clickOutsideEvents: string = 'click,touchstart';
   @Input() clickOutsideEnabled: boolean = true;
-
+  @Input() emitOnBlur: boolean = false;
   @Output() clickOutside: EventEmitter<Event> = new EventEmitter<Event>();
 
   private _nodesExcluded: Array<HTMLElement> = [];
   private _events: Array<string> = ['click'];
 
-  constructor(private _el: ElementRef,
-              private _ngZone: NgZone,
-              @Inject(PLATFORM_ID) private platformId: Object) {
+  constructor(
+      private _el: ElementRef,
+      private _ngZone: NgZone,
+      @Inject(PLATFORM_ID) private platformId: Object) {
     this._initOnClickBody = this._initOnClickBody.bind(this);
     this._onClickBody = this._onClickBody.bind(this);
+    this._onWindowBlur = this._onWindowBlur.bind(this);
   }
 
   ngOnInit() {
@@ -47,17 +49,15 @@ export class ClickOutsideDirective implements OnInit, OnChanges, OnDestroy {
   ngOnDestroy() {
     if (!isPlatformBrowser(this.platformId)) { return; }
 
-    if (this.attachOutsideOnClick) {
-      this._events.forEach(e => this._el.nativeElement.removeEventListener(e, this._initOnClickBody));
-    }
-
-    this._events.forEach(e => document.body.removeEventListener(e, this._onClickBody));
+    this._removeClickOutsideListener();
+    this._removeAttachOutsideOnClickListener();
+    this._removeWindowBlurListener();
   }
 
   ngOnChanges(changes: SimpleChanges) {
     if (!isPlatformBrowser(this.platformId)) { return; }
 
-    if (changes['attachOutsideOnClick'] || changes['exclude']) {
+    if (changes['attachOutsideOnClick'] || changes['exclude'] || changes['emitOnBlur']) {
       this._init();
     }
   }
@@ -70,26 +70,22 @@ export class ClickOutsideDirective implements OnInit, OnChanges, OnDestroy {
     this._excludeCheck();
 
     if (this.attachOutsideOnClick) {
-      this._ngZone.runOutsideAngular(() => {
-        this._events.forEach(e => this._el.nativeElement.addEventListener(e, this._initOnClickBody));
-      });
+      this._initAttachOutsideOnClickListener();
     } else {
       this._initOnClickBody();
+    }
+
+    if (this.emitOnBlur) {
+      this._initWindowBlurListener();
     }
   }
 
   private _initOnClickBody() {
     if (this.delayClickOutsideInit) {
-      setTimeout(this._initClickListeners.bind(this));
+      setTimeout(this._initClickOutsideListener.bind(this));
     } else {
-      this._initClickListeners();
+      this._initClickOutsideListener();
     }
-  }
-
-  private _initClickListeners() {
-    this._ngZone.runOutsideAngular(() => {
-      this._events.forEach(e => document.body.addEventListener(e, this._onClickBody));
-    });
   }
 
   private _excludeCheck() {
@@ -106,21 +102,37 @@ export class ClickOutsideDirective implements OnInit, OnChanges, OnDestroy {
   }
 
   private _onClickBody(ev: Event) {
-    if (!this.clickOutsideEnabled) {
-      return;
-    }
+    if (!this.clickOutsideEnabled) { return; }
 
     if (this.excludeBeforeClick) {
       this._excludeCheck();
     }
 
     if (!this._el.nativeElement.contains(ev.target) && !this._shouldExclude(ev.target)) {
-      this._ngZone.run(() => this.clickOutside.emit(ev));
+      this._emit(ev);
 
       if (this.attachOutsideOnClick) {
-        this._events.forEach(e => document.body.removeEventListener(e, this._onClickBody));
+        this._removeClickOutsideListener();
       }
     }
+  }
+
+  /**
+   * Resolves problem with outside click on iframe
+   * @see https://github.com/arkon/ng-click-outside/issues/32
+   */
+  private _onWindowBlur(ev: Event) {
+    setTimeout(() => {
+      if (!document.hidden) {
+        this._emit(ev);
+      }
+    });
+  }
+
+  private _emit(ev: Event) {
+    if (!this.clickOutsideEnabled) { return; }
+
+    this._ngZone.run(() => this.clickOutside.emit(ev));
   }
 
   private _shouldExclude(target): boolean {
@@ -132,4 +144,41 @@ export class ClickOutsideDirective implements OnInit, OnChanges, OnDestroy {
 
     return false;
   }
+
+  private _initClickOutsideListener() {
+    this._ngZone.runOutsideAngular(() => {
+      this._events.forEach(e => document.body.addEventListener(e, this._onClickBody));
+    });
+  }
+
+  private _removeClickOutsideListener() {
+    this._ngZone.runOutsideAngular(() => {
+      this._events.forEach(e => document.body.removeEventListener(e, this._onClickBody));
+    });
+  }
+
+  private _initAttachOutsideOnClickListener() {
+    this._ngZone.runOutsideAngular(() => {
+      this._events.forEach(e => this._el.nativeElement.addEventListener(e, this._initOnClickBody));
+    });
+  }
+
+  private _removeAttachOutsideOnClickListener() {
+    this._ngZone.runOutsideAngular(() => {
+      this._events.forEach(e => this._el.nativeElement.removeEventListener(e, this._initOnClickBody));
+    });
+  }
+
+  private _initWindowBlurListener() {
+    this._ngZone.runOutsideAngular(() => {
+      window.addEventListener('blur', this._onWindowBlur);
+    });
+  }
+
+  private _removeWindowBlurListener() {
+    this._ngZone.runOutsideAngular(() => {
+      window.removeEventListener('blur', this._onWindowBlur);
+    });
+  }
+
 }
